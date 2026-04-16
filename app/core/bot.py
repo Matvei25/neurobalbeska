@@ -39,14 +39,13 @@ from aiogram.utils import exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiopayok import Payok
 from translatepy import Translator
 from app.api.porfir import porfirevich
 from app.api.dalle import dalle_api
 
 # Локальные модули
 from app.core import config
-from app.core.config import API_TOKEN, admin, bot_username, channel_name, version, github_url
+from app.core.config import API_TOKEN, admin, bot_username, version, github_url
 from app.utils import keyboard
 from app.database import database as db
 
@@ -70,9 +69,6 @@ bot = Bot(token=API_TOKEN, timeout=200)
 dp = Dispatcher(bot, storage=storage)
 
 # Инициализация сервисов
-payok = Payok(
-	config.payokapiid, config.payokapi, config.payoksecret, config.payokshopid
-)
 translator = Translator()
 
 # Глобальные переменные
@@ -87,39 +83,6 @@ class stick(StatesGroup):
 
 # Кэш для часто используемых данных
 chat_settings_cache = {}
-premium_status_cache = {}
-premium_cache_time = {}  # Время последнего обновления кэша для каждого чата
-
-# Функция для получения премиум-статуса с кэшированием
-async def is_premium_chat(chat_id):
-	"""
-	Проверяет, является ли чат премиальным.
-	
-	Args:
-		chat_id: ID чата для проверки
-		
-	Returns:
-		bool: True если чат премиальный, иначе False
-	"""
-	try:
-		premium_file = os.path.join("app", "premium.txt")
-		if not os.path.exists(premium_file):
-			# Create file if it doesn't exist
-			with open(premium_file, "w") as f:
-				f.write("# List of premium chat IDs\n# Add one chat ID per line\n")
-			return False
-			
-		with open(premium_file, "r") as f:
-			premium_list = f.read().splitlines()
-		
-		# Filter out comments and empty lines
-		premium_list = [line.strip() for line in premium_list 
-					   if line.strip() and not line.strip().startswith('#')]
-					   
-		return str(chat_id) in premium_list
-	except Exception as e:
-		logging.error(f"Error checking premium status: {e}")
-		return False
 
 def simbols_exists(word):
 	s = """/@:"""
@@ -147,150 +110,10 @@ async def chat_invited(message: types.Message):
 				await bot.leave_chat(message.chat.id)
 
 
-@dp.message_handler(commands="premium", chat_type=["group", "supergroup"])
-async def premium(message: types.Message):
-	"""
-	Проверяет премиум-статус чата и отображает информацию о преимуществах.
-	"""
-	chat_id = message.chat.id
-	is_premium = await is_premium_chat(chat_id)
-	
-	if is_premium:
-		await message.reply("✅ Этот чат имеет VIP-статус.\n\n"
-						  "Доступны все функции бота без ограничений:\n"
-						  "• Автоматическая генерация текстов\n"
-						  "• Автоматическая генерация стикеров\n"
-						  "• Генерация картинок и мемов\n"
-						  "• Все команды без лимитов и ограничений")
-	else:
-		keyboard = types.InlineKeyboardMarkup()
-		keyboard.add(types.InlineKeyboardButton("Купить VIP-статус", callback_data="buy_premium"))
-		
-		await message.reply("❌ Этот чат НЕ имеет VIP-статус.\n\n"
-						  "Приобретите VIP чтобы получить доступ ко всем функциям бота:\n"
-						  "• Автоматическая генерация текстов\n"
-						  "• Автоматическая генерация стикеров\n"
-						  "• Генерация картинок и мемов\n"
-						  "• Все команды без лимитов и ограничений", 
-						  reply_markup=keyboard)
-
-
-@dp.callback_query_handler(text="buy_premium")
-async def buy_premium(call: types.CallbackQuery):
-	try:
-		number = random.randint(1, 9999999999999)
-		history = await payok.get_transactions()
-		payments = [i.payment_id for i in history]
-		if number not in payments:
-			id = number
-		else:
-			id = random.randint(number + 1, 9999999999999)
-		payment = await payok.create_pay(
-			config.premiumamount,
-			id,
-			desc="Премиум подписка",
-			success_url="https://t.me/neurobalbesbot",
-		)
-		keyboard = types.InlineKeyboardMarkup(row_width=1)
-		keyboard.add(
-			types.InlineKeyboardButton("Оплатить", payment),
-			types.InlineKeyboardButton("Проверить оплату", callback_data=f"check_{id}"),
-			types.InlineKeyboardButton("Отмена", callback_data="cancel_prem"),
-		)
-		await call.message.answer(
-			'Приобретение премиум подписки\nИспользуйте кнопку "Оплатить", чтобы перейти к форме оплаты, после оплаты нажмите на кнопку "Проверить оплату"',
-			reply_markup=keyboard,
-		)
-	except aiohttp.ClientResponseError as e:
-		logging.error(f"PayOK API error: {e}", exc_info=True)
-		await call.message.answer("Ошибка сервера оплаты. Пожалуйста, попробуйте позже.")
-	except Exception as e:
-		logging.error(f"Error in buy_premium: {e}", exc_info=True)
-		await call.message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
-
-
-@dp.callback_query_handler(lambda call: call.data.startswith("check_"))
-async def check_payment(call: types.CallbackQuery):
-	data = call.data.split("_")[1]
-	try:
-		transaction = await payok.get_transactions(data)
-		status = transaction.transaction_status
-		if int(status) == 1:
-			with open("premium.txt", "r", encoding="utf8") as file:
-				prem = file.read().splitlines()
-			if str(call.message.chat.id) not in prem:
-				with open("premium.txt", "a+", encoding="utf8") as f:
-					f.write(str(call.message.chat.id) + "\n")
-				await call.message.edit_text(call.message.text)
-				await call.answer(
-					"Вы успешно приобрели премиум подписку для данного чата", True
-				)
-			else:
-				await call.message.edit_text(call.message.text)
-				await call.answer("Чат уже премиум", True)
-		else:
-			await call.answer("Не оплачено", True)
-	except aiohttp.ClientResponseError as e:
-		logging.error(f"PayOK API error in check_payment: {e}", exc_info=True)
-		await call.answer("Ошибка сервера оплаты. Попробуйте позже.", True)
-	except Exception as e:
-		logging.error(f"Error in check_payment: {e}", exc_info=True)
-		await call.answer("Не оплачено", True)
-
-
-@dp.callback_query_handler(text="cancel_prem")
-async def cancelpre(call: types.CallbackQuery):
-	await call.message.edit_text("Покупка отменена")
-
-
 @dp.message_handler(commands="admin", chat_type=types.ChatType.PRIVATE)
 async def admin_panel(message: types.Message):
 	if int(message.chat.id) == admin:
 		await message.answer("Админ-панель", reply_markup=keyboard.apanel)
-
-@dp.message_handler(commands=["addpremium"], chat_type=types.ChatType.PRIVATE)
-async def add_premium(message: types.Message):
-	"""
-	Добавляет чат в список премиальных чатов.
-	Пример: /addpremium 123456789
-	"""
-	if message.from_user.id != admin:
-		return
-
-	args = message.get_args().split()
-	if not args:
-		await message.reply("Usage: /addpremium [chat_id]")
-		return
-
-	chat_id = args[0].strip()
-	
-	try:
-		premium_file = os.path.join("app", "premium.txt")
-		
-		# Ensure the file exists
-		if not os.path.exists(premium_file):
-			with open(premium_file, "w") as f:
-				f.write("# List of premium chat IDs\n# Add one chat ID per line\n")
-		
-		# Read existing premium chat IDs
-		with open(premium_file, "r") as f:
-			premium_list = f.read().splitlines()
-		
-		# Check if chat ID is already in the list
-		if chat_id in premium_list:
-			await message.reply(f"Chat ID {chat_id} is already premium.")
-			return
-		
-		# Add new chat ID
-		with open(premium_file, "a") as f:
-			f.write(f"{chat_id}\n")
-		
-		await message.reply(f"Chat ID {chat_id} added to premium list.")
-		
-	except Exception as e:
-		logging.error(f"Error adding premium chat: {e}")
-		await message.reply(f"Error adding premium chat: {e}")
-
 
 @dp.message_handler(content_types=["text"], chat_type=types.ChatType.PRIVATE)
 async def private_handler(message: types.Message):
@@ -343,10 +166,6 @@ async def info(message: types.Message):
 	"""Отображает информацию о боте и статусе чата."""
 	chat_id = message.chat.id
 	
-	# Проверяем премиум-статус
-	is_premium = await is_premium_chat(chat_id)
-	premium_status = "✅ VIP" if is_premium else "❌ Обычный"
-	
 	# Получаем информацию о базе данных
 	try:
 		database = db.fullbase(chat_id)
@@ -373,8 +192,7 @@ async def info(message: types.Message):
 		info_message = (
 			f"ℹ️ <b>Информация о боте</b>\n\n"
 			f"🤖 Бот: @{bot_name}\n"
-			f"🆔 ID чата: <code>{chat_id}</code>\n"
-			f"💎 Статус: {premium_status}\n\n"
+			f"🆔 ID чата: <code>{chat_id}</code>\n\n"
 			f"📊 <b>Статистика чата:</b>\n"
 			f"📝 Фраз в базе: {phrases_count}\n"
 			f"🖼 Изображений: {photos_count}\n"
@@ -1654,9 +1472,8 @@ async def all_message_handler(message: types.Message):
 	chat_id = message.chat.id
 	db.insert(chat_id)
 	
-	# Определяем лимит на основе премиум-статуса
-	is_premium = await is_premium_chat(chat_id)
-	maxlen = 2000 if is_premium else 1000
+	# Устанавливаем лимит для всех чатов
+	maxlen = 2000
 	
 	# Получаем базу данных чата
 	database = db.fullbase(chat_id)
