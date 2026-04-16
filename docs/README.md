@@ -1,48 +1,20 @@
-# Neurobalbes Telegram Bot
+# Neurobalbes Module
 
-Telegram бот нейробалбес, который общается в чатах на основе ваших сообщений.
+Модуль `Neurobalbes` для генерации контента: текста, мемов, демотиваторов и голосовых сообщений. Может использоваться как отдельно, так и в составе Telegram бота.
+
+## Авторы
+
+- **Matvei25**
+- **qwen-intl**
 
 ## Возможности
 
-- Создание демотиваторов с пользовательским текстом
-- Создание цитат на изображениях
-- Поддержка VIP-статуса для расширенного функционала
+- Генерация случайных фраз и текста на основе обученной модели
+- Создание мемов с наложением текста на изображения
+- Генерация демотиваторов в классическом стиле
+- Создание голосовых сообщений из текста (TTS)
 - Автоматическое масштабирование текста под размер изображения
 - Поддержка водяных знаков
-
-## Команды бота
-
-### Основные команды
-- `/help` - список команд
-- `/info` - информация о боте
-- `/settings` - настройки бота
-- `/premium` - узнать премиум статус чата
-
-### Генерация текста
-- `/gen` - сгенерировать случайную фразу
-- `/gensyntax` - сгенерировать текст с правильным синтаксисом
-- `/genlong` - сгенерировать длинный текст
-- `/genpoem` - сгенерировать стихотворение
-- `/genbugurt` - сгенерировать бугурт
-- `/genanek` - сгенерировать анекдот
-- `/gendialogue` - сгенерировать диалог
-- `/gensymbols [число]` - сгенерировать текст определенной длины
-- `/cont [текст]` - продолжить фразу
-- `/choice [A или B]` - выбрать один из вариантов
-
-### Голосовые сообщения
-- `/genvoice` - сгенерировать голосовое сообщение
-
-### Опросы
-- `/genpoll` - сгенерировать случайный опрос
-
-### Изображения и мемы
-- `/gendem` - сгенерировать демотиватор
-- `/genmem` - сгенерировать мем
-- `/quote` - создать цитату (в ответ на сообщение)
-
-### Управление данными
-- `/wipe` - очистить базу данных чата
 
 ## Установка
 
@@ -65,51 +37,80 @@ source .venv/bin/activate  # Linux/macOS
 pip install -r app/requirements.txt
 ```
 
-4. Отредактируйте файл конфигурации `config.py` своими данными в директории app/core/:
-```
-# Bot settings
-API_TOKEN = '123:123-123'
-admin = 123
-channel = 'https://t.me/123'
-channel_name = '@123'
-add_to_chat_link = 'http://t.me/123?startgroup=start'
-chat = 'https://t.me/123_chat'
-bot_username = '@123_bot'
+## Использование модуля
 
-# Donate settings
-donate = 'https://www.donationalerts.com/r/spasibo_za_donati'
-donatetoken = '123'
+### Базовый пример
 
-# Payment settings
-premiumamount = 149
-payoksecret = '123'
-payokapi = '123-123-123'
-payokapiid = '123'
-payokshopid= 3222
+```python
+from app.neurobalbes import Balbes
 
-# Version and github url
-version = '2.0.1'
-github_url = 'https://github.com/l1v0n1/neurobalbes-telegram'
-```
+# Инициализация
+balbes = Balbes(
+    texts=["список", "фраз", "для", "обучения"],
+    watermark="@mybot"
+)
 
-## Запуск
+# Генерация текста
+text = await balbes.text.generate_phrase()
+print(text)
 
-```bash
-python -m app.run
+# Генерация мема
+meme_path = await balbes.meme.create_text_meme("Текст мема", font_size=1)
+
+# Генерация демотиватора
+demo_path = await balbes.demotivator.create_demotivator(
+    top_text="Заголовок",
+    bottom_text="Описание",
+    image_path="path/to/image.jpg"
+)
+
+# Генерация голосового сообщения
+voice_path, voice_data = await balbes.voice.generate_voice("Текст для озвучки")
 ```
 
-## Структура проекта
+### Настройка путей к ресурсам
+
+При инициализации можно указать пути к шрифтам и временной папке:
+
+```python
+balbes = Balbes(
+    texts=["..."],
+    fonts_dir="app/media/fonts",
+    temp_dir="app/media/temp",
+    watermark="@mybot"
+)
+```
+
+## Структура модуля
 
 ```
-app/
-├── api/          # API интеграции
-├── core/         # Ядро бота
-├── database/     # Работа с базой данных
-├── media/        # Медиа ресурсы
-│   ├── fonts/    # Шрифты
-│   └── temp/     # Временные файлы
-├── utils/        # Вспомогательные функции
-└── requirements.txt
+app/neurobalbes/
+├── __init__.py         # Точка входа, экспорт классов
+├── balbes.py           # Основной класс Balbes
+├── text_generator.py   # Генерация текста
+├── meme_generator.py   # Генерация мемов
+├── voice_generator.py  # Генерация голосовых сообщений
+├── demotivator_generator.py  # Генерация демотиваторов
+├── utils.py            # Вспомогательные функции
+├── README.md           # Документация модуля
+└── example.py          # Пример использования
+```
+
+## Интеграция с Telegram ботом
+
+Модуль разработан для лёгкой интеграции с aiogram и другими фреймворками:
+
+```python
+from aiogram import Router, types
+from app.neurobalbes import Balbes
+
+router = Router()
+balbes = Balbes(texts=[...])
+
+@router.message(commands=["gen"])
+async def cmd_gen(message: types.Message):
+    text = await balbes.text.generate_phrase()
+    await message.answer(text)
 ```
 
 ## Лицензия
